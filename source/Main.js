@@ -19,12 +19,55 @@ const scrollBottomBtn = document.getElementById("scroll-bottom-btn");
 const connectionDot = document.getElementById("connection-dot");
 const toastContainer = document.getElementById("toast-container");
 const installBtn = document.getElementById("install-btn");
+const luaToolsBtn = document.getElementById("lua-tools-btn");
+const luaModalOverlay = document.getElementById("lua-modal-overlay");
+const luaModalClose = document.getElementById("lua-modal-close");
+const luaModalCancel = document.getElementById("lua-modal-cancel");
+const luaModalGenerate = document.getElementById("lua-modal-generate");
+const luaTemplateSelect = document.getElementById("lua-template-select");
+const luaTemplateDesc = document.getElementById("lua-template-desc");
+const luaConfigInput = document.getElementById("lua-config-input");
+const luaConfigError = document.getElementById("lua-config-error");
 
 let conversations = [];
 let activeId = null;
 let isStreaming = false;
 let abortController = null;
 let searchTerm = "";
+
+const LUA_DEFAULT_CONFIGS = {
+  holdCover: {
+    isPixelDefault: false,
+    endDelay: 10,
+    disappearDelay: 0.3,
+    dadHoldSustains: true
+  },
+  characterGroup: {
+    picoEnabled: true,
+    groups: {
+      bf: ["bf", "bf-car", "bf-christmas", "bf-pixel", "bf-dark"],
+      pico: ["pico-playable", "pico-christmas", "pico-dark", "pico-pixel", "pico-player"]
+    },
+    scripts: {
+      bf: "scripts/players/bf",
+      pico: "scripts/players/pico"
+    }
+  },
+  noteSplash: {
+    spritesheet: "NOTE_hold_assets",
+    colors: ["purple", "blue", "green", "red"],
+    useRatingColors: true,
+    disableDefault: true,
+    poolSize: 8
+  },
+  scoreTally: {
+    spritesheet: "resultScreen/tallieNumber"
+  }
+};
+
+function hasLuaEngine() {
+  return typeof window.LuaCode !== "undefined";
+}
 
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -297,6 +340,12 @@ async function sendMessage() {
   const text = input.value.trim();
   if (!text || isStreaming) return;
 
+  if (tryHandleSlashCommand(text)) {
+    input.value = "";
+    autoResize();
+    return;
+  }
+
   let convo = getActiveConversation();
   if (!convo) convo = createConversation();
 
@@ -490,6 +539,143 @@ installBtn.addEventListener("click", async function() {
 window.addEventListener("appinstalled", function() {
   installBtn.style.display = "none";
 });
+
+function populateLuaTemplateSelect() {
+  luaTemplateSelect.innerHTML = "";
+  if (!hasLuaEngine()) {
+    const opt = document.createElement("option");
+    opt.textContent = "LuaCode engine not loaded";
+    luaTemplateSelect.appendChild(opt);
+    luaTemplateSelect.disabled = true;
+    return;
+  }
+  window.LuaCode.list().forEach(function(tpl) {
+    const opt = document.createElement("option");
+    opt.value = tpl.id;
+    opt.textContent = tpl.label;
+    luaTemplateSelect.appendChild(opt);
+  });
+  updateLuaTemplatePreview();
+}
+
+function updateLuaTemplatePreview() {
+  if (!hasLuaEngine()) return;
+  const id = luaTemplateSelect.value;
+  const list = window.LuaCode.list();
+  const meta = list.find(function(t) { return t.id === id; });
+  luaTemplateDesc.textContent = meta ? meta.description : "";
+  const defaultConfig = LUA_DEFAULT_CONFIGS[id] || {};
+  luaConfigInput.value = JSON.stringify(defaultConfig, null, 2);
+  luaConfigError.classList.remove("visible");
+}
+
+function openLuaModal() {
+  if (!hasLuaEngine()) {
+    showToast("LuaCode engine failed to load", true);
+    return;
+  }
+  populateLuaTemplateSelect();
+  luaModalOverlay.classList.add("active");
+}
+
+function closeLuaModal() {
+  luaModalOverlay.classList.remove("active");
+  luaConfigError.classList.remove("visible");
+}
+
+function insertGeneratedLuaMessage(templateId, code, userNote) {
+  let convo = getActiveConversation();
+  if (!convo) convo = createConversation();
+
+  const isFirstMessage = convo.messages.length === 0;
+  const noteText = userNote || ("Generate Lua script: " + templateId);
+  if (isFirstMessage) convo.title = deriveTitle(noteText);
+
+  const userMsgId = uid();
+  convo.messages.push({ id: userMsgId, role: "user", content: noteText });
+  appendMessageElement("user", noteText, userMsgId);
+
+  const aiMsgId = uid();
+  const fenced = "```lua\n" + code + "\n```";
+  convo.messages.push({ id: aiMsgId, role: "assistant", content: fenced });
+  appendMessageElement("ai", fenced, aiMsgId);
+
+  touchConversation(convo);
+  saveConversations();
+  renderSidebar();
+  scrollToBottom(true);
+}
+
+function handleLuaGenerate() {
+  const id = luaTemplateSelect.value;
+  let config = {};
+
+  try {
+    const raw = luaConfigInput.value.trim();
+    config = raw ? JSON.parse(raw) : {};
+  } catch (err) {
+    luaConfigError.textContent = "Invalid JSON: " + err.message;
+    luaConfigError.classList.add("visible");
+    return;
+  }
+
+  try {
+    const code = window.LuaCode.generate(id, config);
+    const meta = window.LuaCode.list().find(function(t) { return t.id === id; });
+    insertGeneratedLuaMessage(id, code, "Generate Lua script: " + (meta ? meta.label : id));
+    closeLuaModal();
+  } catch (err) {
+    luaConfigError.textContent = "Generation failed: " + err.message;
+    luaConfigError.classList.add("visible");
+  }
+}
+
+function tryHandleSlashCommand(text) {
+  if (text.indexOf("/lua") !== 0) return false;
+  if (!hasLuaEngine()) {
+    showToast("LuaCode engine failed to load", true);
+    return true;
+  }
+
+  const rest = text.slice(4).trim();
+  const firstSpace = rest.indexOf(" ");
+  const templateId = firstSpace === -1 ? rest : rest.slice(0, firstSpace);
+  const configRaw = firstSpace === -1 ? "" : rest.slice(firstSpace + 1).trim();
+
+  const known = window.LuaCode.list().map(function(t) { return t.id; });
+  if (!templateId || known.indexOf(templateId) === -1) {
+    showToast("Unknown template. Available: " + known.join(", "), true);
+    return true;
+  }
+
+  let config = LUA_DEFAULT_CONFIGS[templateId] || {};
+  if (configRaw) {
+    try {
+      config = JSON.parse(configRaw);
+    } catch (err) {
+      showToast("Invalid JSON in command: " + err.message, true);
+      return true;
+    }
+  }
+
+  try {
+    const code = window.LuaCode.generate(templateId, config);
+    insertGeneratedLuaMessage(templateId, code, text);
+  } catch (err) {
+    showToast("Generation failed: " + err.message, true);
+  }
+
+  return true;
+}
+
+luaToolsBtn.addEventListener("click", openLuaModal);
+luaModalClose.addEventListener("click", closeLuaModal);
+luaModalCancel.addEventListener("click", closeLuaModal);
+luaModalOverlay.addEventListener("click", function(e) {
+  if (e.target === luaModalOverlay) closeLuaModal();
+});
+luaTemplateSelect.addEventListener("change", updateLuaTemplatePreview);
+luaModalGenerate.addEventListener("click", handleLuaGenerate);
 
 function init() {
   loadConversations();
