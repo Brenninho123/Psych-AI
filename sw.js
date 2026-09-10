@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v4";
+const CACHE_VERSION = "v5";
 const STATIC_CACHE = "psych-ai-static-" + CACHE_VERSION;
 const RUNTIME_CACHE = "psych-ai-runtime-" + CACHE_VERSION;
 
