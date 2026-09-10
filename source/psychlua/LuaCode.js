@@ -1,16 +1,17 @@
+(function(root, factory) {
+  if (typeof module === "object" && module.exports) {
+    module.exports = factory();
+  } else {
+    root.LuaCode = factory();
+  }
+})(typeof self !== "undefined" ? self : this, function() {
+
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function luaEscapeString(str) {
   return String(str).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-}
-
-function isArrayLike(obj) {
-  if (!isPlainObject(obj)) return false;
-  const keys = Object.keys(obj);
-  if (keys.length === 0) return false;
-  return keys.every(function(k, i) { return k === String(i); });
 }
 
 function toLuaValue(value) {
@@ -61,10 +62,6 @@ class LuaWriter {
     return this;
   }
 
-  comment() {
-    return this;
-  }
-
   local(name, value) {
     this.lines.push("local " + name + " = " + toLuaValue(value));
     return this;
@@ -84,7 +81,7 @@ class LuaWriter {
 
   call(fnName, args) {
     const argStr = (args || []).map(function(a) {
-      return typeof a === "string" && a.startsWith("__raw:") ? a.slice(6) : toLuaValue(a);
+      return typeof a === "string" && a.indexOf("__raw:") === 0 ? a.slice(6) : toLuaValue(a);
     }).join(",");
     this.lines.push(fnName + "(" + argStr + ")");
     return this;
@@ -93,20 +90,6 @@ class LuaWriter {
   fn(name, params, bodyFn) {
     this.lines.push("function " + name + "(" + (params || []).join(",") + ")");
     bodyFn(this);
-    this.lines.push("end");
-    return this;
-  }
-
-  ifChain(branches) {
-    branches.forEach(function(branch, index) {
-      const keyword = index === 0 ? "if " : (branch.condition ? "elseif " : "else");
-      if (branch.condition) {
-        this.lines.push(keyword + branch.condition + (index === 0 ? " then" : " then"));
-      } else {
-        this.lines.push("else");
-      }
-      branch.body(this);
-    }, this);
     this.lines.push("end");
     return this;
   }
@@ -164,41 +147,6 @@ class LuaWriter {
 
   build() {
     return this.lines.join("\n");
-  }
-}
-
-class DigitDisplaySystem {
-  static init(w, cacheName, tagPrefix, spritesheet, maxDigits, x, y, spacing, extraProps) {
-    w.raw(cacheName + "[" + toLuaValue(tagPrefix) + "] = {digits = {}, max = " + maxDigits + "}");
-    w.forNum("i", 1, maxDigits, function(b) {
-      b.raw("local tag = " + toLuaValue(tagPrefix) + "..i");
-      b.raw("makeAnimatedLuaSprite(tag, " + toLuaValue(spritesheet) + ", " + x + " + " + spacing + " * (i - 1), " + y + ")");
-      b.raw("setObjectCamera(tag, 'other')");
-      if (extraProps) {
-        extraProps.forEach(function(p) {
-          b.raw("setProperty(tag.." + toLuaValue(p.suffix) + ", " + toLuaValue(p.value) + ")");
-        });
-      }
-      b.raw("addLuaSprite(tag)");
-      b.raw("setProperty(tag..'.visible', false)");
-      b.raw(cacheName + "[" + toLuaValue(tagPrefix) + "].digits[i] = tag");
-    });
-  }
-
-  static setText(w, cacheName, tagVar, valueVar, animPrefixFn) {
-    w.raw("local data = " + cacheName + "[" + tagVar + "]");
-    w.raw("local letters = stringSplit(tostring(" + valueVar + "), '')");
-    w.forNum("i", 1, "data.max", function(b) {
-      b.raw("setProperty(data.digits[i]..'.visible', false)");
-    });
-    w.raw("for i = 1, #letters do");
-    w.raw("local tag = data.digits[i]");
-    w.raw("local digit = letters[i]");
-    w.raw("local animName = " + animPrefixFn);
-    w.raw("addAnimationByPrefix(tag, 'idle', animName, 24, false)");
-    w.raw("objectPlayAnimation(tag, 'idle', true)");
-    w.raw("setProperty(tag..'.visible', true)");
-    w.raw("end");
   }
 }
 
@@ -428,11 +376,12 @@ function generateNoteSplashScript(config) {
   const disableDefault = config.disableDefault !== false;
   const scale = config.scale || { x: 1, y: 1 };
   const antialiasing = config.antialiasing !== false;
+  const poolSize = config.poolSize || 8;
 
   const w = new LuaWriter();
 
   w.local("splashPool", []);
-  w.local("poolSize", config.poolSize || 8);
+  w.local("poolSize", poolSize);
   w.blank();
 
   if (disableDefault) {
@@ -457,7 +406,6 @@ function generateNoteSplashScript(config) {
       inner.raw("table.insert(splashPool,tag)");
       inner.blank();
     });
-    w.raw("");
   });
   w.blank();
 
@@ -548,14 +496,28 @@ function generateScoreTallySystem(config) {
 class LuaTemplateRegistry {
   constructor() {
     this.templates = {};
-    this.register("holdCover", generateHoldCoverScript);
-    this.register("characterGroup", generateCharacterGroupScript);
-    this.register("noteSplash", generateNoteSplashScript);
-    this.register("scoreTally", generateScoreTallySystem);
+    this.meta = {};
+    this.register("holdCover", generateHoldCoverScript, {
+      label: "Hold Cover / Sustain Splash",
+      description: "Note-hold splash system with pixel and normal stage variants."
+    });
+    this.register("characterGroup", generateCharacterGroupScript, {
+      label: "Character Group Script",
+      description: "Loads per-character scripts based on group membership (bf/pico style)."
+    });
+    this.register("noteSplash", generateNoteSplashScript, {
+      label: "Note Splash Pool",
+      description: "Pooled note-hit splash sprites replacing the default splash."
+    });
+    this.register("scoreTally", generateScoreTallySystem, {
+      label: "Score Tally Digits",
+      description: "Animated digit counters for results-screen style tallies."
+    });
   }
 
-  register(name, generatorFn) {
+  register(name, generatorFn, meta) {
     this.templates[name] = generatorFn;
+    this.meta[name] = meta || {};
     return this;
   }
 
@@ -566,21 +528,30 @@ class LuaTemplateRegistry {
   }
 
   list() {
-    return Object.keys(this.templates);
+    const self = this;
+    return Object.keys(this.templates).map(function(id) {
+      return { id: id, label: self.meta[id].label || id, description: self.meta[id].description || "" };
+    });
   }
 }
 
-module.exports = {
-  toLuaValue,
-  luaEscapeString,
-  luaIdentifier,
-  range,
-  indicesList,
-  LuaWriter,
-  DigitDisplaySystem,
-  generateHoldCoverScript,
-  generateCharacterGroupScript,
-  generateNoteSplashScript,
-  generateScoreTallySystem,
-  LuaTemplateRegistry
+const registry = new LuaTemplateRegistry();
+
+return {
+  toLuaValue: toLuaValue,
+  luaEscapeString: luaEscapeString,
+  luaIdentifier: luaIdentifier,
+  range: range,
+  indicesList: indicesList,
+  LuaWriter: LuaWriter,
+  generateHoldCoverScript: generateHoldCoverScript,
+  generateCharacterGroupScript: generateCharacterGroupScript,
+  generateNoteSplashScript: generateNoteSplashScript,
+  generateScoreTallySystem: generateScoreTallySystem,
+  LuaTemplateRegistry: LuaTemplateRegistry,
+  registry: registry,
+  list: function() { return registry.list(); },
+  generate: function(name, config) { return registry.generate(name, config); }
 };
+
+});
