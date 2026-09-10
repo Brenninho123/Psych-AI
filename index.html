@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Psych AI</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0a0a12">
@@ -18,6 +18,7 @@
   --accent-3: #5ce1ff;
   --text: #f0f0f5;
   --text-dim: #8888a0;
+  --danger: #ff5c7c;
 }
 
 * {
@@ -53,19 +54,32 @@ body {
   100% { transform: scale(1.1) translate(20px, -20px); }
 }
 
+#sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 5;
+}
+
+#sidebar-overlay.active {
+  display: block;
+}
+
 #sidebar {
-  width: 260px;
-  min-width: 260px;
+  width: 280px;
+  min-width: 280px;
   background: var(--panel);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  z-index: 1;
+  z-index: 10;
   position: relative;
+  transition: transform 0.25s ease;
 }
 
 #sidebar-header {
-  padding: 20px;
+  padding: 18px 20px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -91,8 +105,19 @@ body {
   color: var(--text-dim);
 }
 
+#close-sidebar-btn {
+  display: none;
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
 #new-chat-btn {
-  margin: 16px;
+  margin: 14px 16px;
   padding: 11px 14px;
   background: var(--glass);
   border: 1px solid var(--border);
@@ -112,13 +137,29 @@ body {
   border-color: rgba(255, 255, 255, 0.16);
 }
 
+#search-box {
+  margin: 0 16px 12px;
+  padding: 8px 12px;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+  width: calc(100% - 32px);
+}
+
+#search-box::placeholder {
+  color: var(--text-dim);
+}
+
 #history-list {
   flex: 1;
   overflow-y: auto;
-  padding: 0 12px;
+  padding: 0 10px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .history-item {
@@ -126,18 +167,90 @@ body {
   border-radius: 8px;
   font-size: 13px;
   color: var(--text-dim);
-  cursor: default;
+  cursor: pointer;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.15s, color 0.15s;
+  position: relative;
+}
+
+.history-item:hover {
+  background: var(--glass);
+  color: var(--text);
+}
+
+.history-item.active {
+  background: rgba(124, 92, 255, 0.15);
+  color: var(--text);
+  border: 1px solid rgba(124, 92, 255, 0.3);
+}
+
+.history-item .label {
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.history-item .delete-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.history-item:hover .delete-btn {
+  display: block;
+}
+
+.history-item .delete-btn:hover {
+  color: var(--danger);
+  background: rgba(255, 92, 124, 0.1);
+}
+
+#empty-history {
+  padding: 20px 14px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
 #sidebar-footer {
-  padding: 16px;
+  padding: 14px 16px;
   border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#sidebar-footer span {
   font-size: 11px;
   color: var(--text-dim);
-  text-align: center;
+}
+
+#clear-all-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+#clear-all-btn:hover {
+  color: var(--danger);
+  border-color: rgba(255, 92, 124, 0.4);
 }
 
 #main {
@@ -150,13 +263,23 @@ body {
 }
 
 #topbar {
-  padding: 16px 28px;
+  padding: 14px 24px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
   border-bottom: 1px solid var(--border);
   background: rgba(10, 10, 18, 0.6);
   backdrop-filter: blur(12px);
+}
+
+#menu-toggle {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
 }
 
 #topbar h1 {
@@ -166,6 +289,25 @@ body {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+#connection-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 6px #4ade80;
+}
+
+#connection-dot.offline {
+  background: var(--danger);
+  box-shadow: 0 0 6px var(--danger);
+}
+
+#topbar-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
 }
 
 #install-btn {
@@ -193,12 +335,13 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  position: relative;
 }
 
 #chat {
   width: 100%;
   max-width: 820px;
-  padding: 32px 24px;
+  padding: 32px 24px 12px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -288,8 +431,18 @@ body {
   color: var(--text-dim);
 }
 
-.msg {
+.msg-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   max-width: 72%;
+}
+
+.msg-row.user .msg-col {
+  align-items: flex-end;
+}
+
+.msg {
   padding: 13px 17px;
   border-radius: 16px;
   line-height: 1.6;
@@ -311,6 +464,32 @@ body {
   border-bottom-left-radius: 4px;
 }
 
+.msg-actions {
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.msg-row:hover .msg-actions {
+  opacity: 1;
+}
+
+.msg-action-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+
+.msg-action-btn:hover {
+  color: var(--text);
+  background: var(--glass);
+}
+
 .code-block {
   position: relative;
   background: #08080f;
@@ -318,6 +497,17 @@ body {
   border-radius: 10px;
   margin-top: 10px;
   overflow: hidden;
+}
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-dim);
 }
 
 .code-block pre {
@@ -328,14 +518,11 @@ body {
 }
 
 .copy-btn {
-  position: absolute;
-  top: 8px;
-  right: 8px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid var(--border);
   color: var(--text-dim);
   font-size: 11px;
-  padding: 5px 10px;
+  padding: 4px 10px;
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
@@ -344,6 +531,10 @@ body {
 .copy-btn:hover {
   background: rgba(255, 255, 255, 0.15);
   color: var(--text);
+}
+
+.copy-btn.copied {
+  color: #4ade80;
 }
 
 .typing {
@@ -368,8 +559,29 @@ body {
   30% { transform: translateY(-4px); opacity: 1; }
 }
 
+#scroll-bottom-btn {
+  display: none;
+  position: absolute;
+  bottom: 16px;
+  right: 24px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+#scroll-bottom-btn.visible {
+  display: flex;
+}
+
 #input-area {
-  padding: 18px 24px 26px;
+  padding: 14px 24px 22px;
   display: flex;
   justify-content: center;
 }
@@ -440,11 +652,48 @@ body {
   height: 16px;
 }
 
+#send-btn.stop-mode {
+  background: var(--danger);
+}
+
 #input-hint {
   text-align: center;
   font-size: 11px;
   color: var(--text-dim);
   margin-top: 10px;
+}
+
+#toast-container {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.toast {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  animation: toast-in 0.2s ease;
+}
+
+.toast.error {
+  border-color: rgba(255, 92, 124, 0.4);
+  color: #ffb3c1;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 #chat-wrapper::-webkit-scrollbar,
@@ -459,14 +708,34 @@ body {
 }
 
 @media (max-width: 720px) {
-  #sidebar { display: none; }
-  .msg { max-width: 85%; }
+  #sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    transform: translateX(-100%);
+  }
+
+  #sidebar.open {
+    transform: translateX(0);
+  }
+
+  #close-sidebar-btn {
+    display: block;
+  }
+
+  #menu-toggle {
+    display: block;
+  }
+
+  .msg-col { max-width: 85%; }
 }
 </style>
 </head>
 <body>
 
 <div id="glow"></div>
+<div id="sidebar-overlay"></div>
 
 <aside id="sidebar">
   <div id="sidebar-header">
@@ -475,18 +744,27 @@ body {
       <div class="title">Psych AI</div>
       <div class="subtitle">Psych Engine assistant</div>
     </div>
+    <button id="close-sidebar-btn">&times;</button>
   </div>
   <button id="new-chat-btn">
     <span>+</span> New chat
   </button>
+  <input id="search-box" type="text" placeholder="Search chats...">
   <div id="history-list"></div>
-  <div id="sidebar-footer">Built for Psych Engine</div>
+  <div id="sidebar-footer">
+    <span id="chat-count">0 chats</span>
+    <button id="clear-all-btn">Clear all</button>
+  </div>
 </aside>
 
 <div id="main">
   <div id="topbar">
+    <button id="menu-toggle">&#9776;</button>
     <h1>Psych AI</h1>
-    <button id="install-btn">Install app</button>
+    <div id="connection-dot" title="Connection status"></div>
+    <div id="topbar-actions">
+      <button id="install-btn">Install app</button>
+    </div>
   </div>
 
   <div id="chat-wrapper">
@@ -503,6 +781,11 @@ body {
         </div>
       </div>
     </div>
+    <button id="scroll-bottom-btn">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </button>
   </div>
 
   <div id="input-area">
@@ -520,6 +803,8 @@ body {
     </div>
   </div>
 </div>
+
+<div id="toast-container"></div>
 
 <script src="source/Main.js"></script>
 </body>
