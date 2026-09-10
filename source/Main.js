@@ -32,7 +32,6 @@ const luaConfigError = document.getElementById("lua-config-error");
 let conversations = [];
 let activeId = null;
 let isStreaming = false;
-let abortController = null;
 let searchTerm = "";
 
 const LUA_DEFAULT_CONFIGS = {
@@ -382,7 +381,6 @@ async function sendMessage() {
   scrollToBottom(true);
 
   setSendButtonMode(true);
-  abortController = new AbortController();
 
   try {
     let firstChunkReceived = false;
@@ -390,7 +388,6 @@ async function sendMessage() {
     const aiMsgId = uid();
 
     const fullText = await api.chat(convo.messages.map(stripInternalFields), {
-      signal: abortController.signal,
       onChunk: function(piece, accumulated) {
         if (!firstChunkReceived) {
           firstChunkReceived = true;
@@ -417,9 +414,10 @@ async function sendMessage() {
   } catch (err) {
     typingRow.remove();
     if (err.type !== "aborted") {
-      const message = err.type === "network"
-        ? "Could not reach the server. Check your connection."
-        : (err.message || "Something went wrong. Try again later.");
+      let message = err.message || "Something went wrong. Try again later.";
+      if (err.type === "network") message = "Could not reach the server. Check your connection.";
+      if (err.type === "rate_limit") message = "Too many requests. Wait a moment and try again.";
+      if (err.type === "stream_timeout") message = "The response stalled. Try again.";
       appendMessageElement("ai", message, uid());
       showToast(message, true);
     }
@@ -470,8 +468,8 @@ input.addEventListener("keydown", function(e) {
 });
 
 sendBtn.addEventListener("click", function() {
-  if (isStreaming && abortController) {
-    abortController.abort();
+  if (isStreaming) {
+    api.cancel();
     return;
   }
   sendMessage();
