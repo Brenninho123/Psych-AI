@@ -69,6 +69,16 @@ function hasLuaEngine() {
   return typeof window.LuaCode !== "undefined";
 }
 
+const api = new window.PsychAPI.PsychAPI({ baseUrl: API_URL, timeout: 30000, maxRetries: 2 });
+
+api.addEventListener("statuschange", function(e) {
+  setConnectionStatus(e.detail.online);
+});
+
+api.addEventListener("retry", function(e) {
+  showToast("Retrying request (attempt " + e.detail.attempt + ")...");
+});
+
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
@@ -375,51 +385,43 @@ async function sendMessage() {
   abortController = new AbortController();
 
   try {
-    const response = await fetch(API_URL + "/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: convo.messages.map(stripInternalFields) }),
-      signal: abortController.signal
-    });
-
-    if (!response.ok) throw new Error("Request failed with status " + response.status);
-
-    typingRow.remove();
-
-    let fullText = "";
+    let firstChunkReceived = false;
+    let built = null;
     const aiMsgId = uid();
-    const built = appendMessageElement("ai", "", aiMsgId);
 
-    if (response.body && response.body.getReader) {
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const chunk = await reader.read();
-        if (chunk.done) break;
-        fullText += decoder.decode(chunk.value, { stream: true });
-        built.bubble.innerHTML = formatMessage(fullText);
+    const fullText = await api.chat(convo.messages.map(stripInternalFields), {
+      signal: abortController.signal,
+      onChunk: function(piece, accumulated) {
+        if (!firstChunkReceived) {
+          firstChunkReceived = true;
+          typingRow.remove();
+          built = appendMessageElement("ai", "", aiMsgId);
+        }
+        built.bubble.innerHTML = formatMessage(accumulated);
         bindCodeCopyButtons(built.bubble);
         scrollToBottom(false);
       }
-    } else {
-      const data = await response.json();
-      fullText = data.reply || "";
-      built.bubble.innerHTML = formatMessage(fullText);
-      bindCodeCopyButtons(built.bubble);
+    });
+
+    typingRow.remove();
+    if (!built) {
+      built = appendMessageElement("ai", "", aiMsgId);
     }
+    built.bubble.innerHTML = formatMessage(fullText);
+    bindCodeCopyButtons(built.bubble);
 
     convo.messages.push({ id: aiMsgId, role: "assistant", content: fullText });
     touchConversation(convo);
     saveConversations();
     renderSidebar();
-    setConnectionStatus(true);
   } catch (err) {
     typingRow.remove();
-    if (err.name !== "AbortError") {
-      appendMessageElement("ai", "Error connecting to the server. Try again later.", uid());
-      setConnectionStatus(false);
-      showToast("Connection error", true);
+    if (err.type !== "aborted") {
+      const message = err.type === "network"
+        ? "Could not reach the server. Check your connection."
+        : (err.message || "Something went wrong. Try again later.");
+      appendMessageElement("ai", message, uid());
+      showToast(message, true);
     }
   } finally {
     setSendButtonMode(false);
@@ -686,6 +688,8 @@ function init() {
   renderSidebar();
   renderActiveConversation();
   bindSuggestionChips();
+  api.health();
+  api.startHealthPolling(30000);
 }
 
 init();
