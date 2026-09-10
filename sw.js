@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const STATIC_CACHE = "psych-ai-static-" + CACHE_VERSION;
 const RUNTIME_CACHE = "psych-ai-runtime-" + CACHE_VERSION;
 
@@ -6,6 +6,7 @@ const STATIC_ASSETS = [
   "/",
   "/index.html",
   "/source/Main.js",
+  "/source/psychlua/LuaCode.js",
   "/manifest.json",
   "/offline.html"
 ];
